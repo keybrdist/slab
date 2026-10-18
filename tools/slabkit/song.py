@@ -445,7 +445,21 @@ class Clip:
                 **({"automation": _lanes_json(self.lanes)} if self.lanes else {})}
 
 
-def _wav_seconds(path):
+def _audio_seconds(path):
+    """Length of a WAV, or of a FLAC from its STREAMINFO block (slab plays
+    both as audio clips); None when it can't tell."""
+    if path.lower().endswith(".flac"):
+        try:
+            with open(path, "rb") as f:
+                head = f.read(42)
+        except OSError:
+            return None
+        if len(head) < 42 or head[:4] != b"fLaC" or head[4] & 0x7F != 0:
+            return None
+        info = head[8:]
+        rate = (info[10] << 12) | (info[11] << 4) | (info[12] >> 4)
+        frames = ((info[13] & 0x0F) << 32) | int.from_bytes(info[14:18], "big")
+        return frames / float(rate) if rate and frames else None
     try:
         with wave.open(path, "rb") as w:
             return w.getnframes() / float(w.getframerate())
@@ -454,7 +468,7 @@ def _wav_seconds(path):
 
 
 class AudioClip:
-    """A WAV placed on a track and mixed in directly (docs/19 audio clips).
+    """A WAV or FLAC placed on a track and mixed in directly (docs/19 audio clips).
     It plays the source window [start_sec, start_sec + dur_sec) at native
     rate; reverse=True plays that window end to start. Fades are seconds,
     in clip time. Warped (docs/29), the source is laid on beats at
@@ -729,7 +743,7 @@ class Track:
               warp=None, fit_beats=None, mode="tape", preserve="hits", gap="cut", decay=100,
               transpose=0, fine=0, grain=40, size=0.7, tune=None, scale="chromatic", speed=20,
               humanize=0):
-        """Place a WAV: at a section's start plus `at_bar` bars, or at
+        """Place a WAV or FLAC: at a section's start plus `at_bar` bars, or at
         `at_beat`. dur_sec defaults to the rest of the file. reverse=True
         plays it backwards (a swell into the downbeat: end it on the bar).
         warp=bpm locks it to the beat at the tempo it was played in, so it
@@ -749,7 +763,7 @@ class Track:
         where = f"track {self.name} audio {path}"
         if not os.path.exists(path):
             raise SlabError(f"{where}: file not found")
-        total = _wav_seconds(path)
+        total = _audio_seconds(path)
         if dur_sec is None:
             if total is None:
                 raise SlabError(f"{where}: can't read its length; pass dur_sec=")
