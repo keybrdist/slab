@@ -71,7 +71,7 @@ Filters:
 | `--vocal` `--kick` `--drums` `--tonal` `--flagged` | each with a `--no-` form (`--atonal`) |
 | `--pack` `--min-dur` `--max-dur` | |
 | `--where EXPR` | any numeric field: `lufs>-10`, `band_air<0.05`, `purity>=0.9` |
-| `--sort FIELD` | `-FIELD` for descending; the default ranks by the filters given |
+| `--sort FIELD` | `--sort=-FIELD` for descending; the default ranks by the filters given |
 | `--paths` `--json` `--limit N` | output |
 
 A result line reads: type, loop or shot, bars, tempo (`~` when it came from
@@ -120,7 +120,7 @@ apply to a file are absent.
 | group | fields |
 |---|---|
 | identity | `id` (path under the root), `pack`, `rel`, `path`, `file`, `title`, `format`, `codec`, `sample_rate`, `channels`, `bit_depth`, `duration`, `frames`, `size`, `mtime` |
-| the name | `name_type`, `name_type_conf`, `name_bpm`, `name_key` (`Fm`, `C#`, or `E?` when the mode is unknown), `name_key_text`, `name_key_kind` (`key`, `root`, `chord`, `progression`), `name_chord`, `keywords` (normalized: `amen`, `reese`, `rhodes`, `808`, `sub`, `rave`, `dub`, `m1`, `d50`... plus measured tags such as `swung`, `dark-top`, `clean`), `words` (the rest of the title) |
+| the name | `name_type`, `name_type_conf`, `name_bpm`, `name_key` (`Fm`, or a bare root like `C#` that `--key` matches in either mode), `name_key_text`, `name_key_kind` (`key`, `root`, `chord`, `progression`), `name_chord`, `keywords` (normalized: `amen`, `reese`, `rhodes`, `808`, `sub`, `rave`, `dub`, `m1`, `d50`... plus measured tags such as `swung`, `dark-top`, `clean`), `words` (the rest of the title) |
 | type | `type`, `type_source` (`name` or `audio`), `type_conf`, `audio_type`, `family` (`drum-loop`, `drum-hit`, `tonal`, `vocal`, `fx`, `demo`) |
 | loop | `loop`, `loop_conf`, `loop_source`; for loops `bars`, `bars_exact` (whole bars at the tempo), `bars_how` (`exact`, `padded`, `tail`, `trailing silence`), `loop_secs` (the musical length), `padded` |
 | tempo | `bpm`, `bpm_conf`, `bpm_source` (`name`, `audio + whole bars`, `audio`), `bpm_audio`, `bpm_audio_conf`, `bpm_bars` (whole bars nearest the detected tempo), `bpm_agree` (`same`, `half/double`, `3:2`, `alt`, `other`) |

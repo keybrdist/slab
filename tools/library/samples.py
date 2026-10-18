@@ -57,6 +57,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(SLAB, "tools"))
 
 import sample_names as N  # noqa: E402
+from slabkit.theory import NAMES  # noqa: E402
 
 AUDIO = (".flac", ".wav", ".aif", ".aiff", ".mp3")
 AUDIO_VERSION = 3      # bump when sample_audio's measures change
@@ -200,17 +201,15 @@ FAMILY = {"break": "drum-loop", "top": "drum-loop", "perc-loop": "drum-loop",
           "kick": "drum-hit", "snare": "drum-hit", "clap": "drum-hit", "hat": "drum-hit", "cymbal": "drum-hit",
           "perc": "drum-hit", "bass": "tonal", "pad": "tonal", "chord": "tonal", "stab": "tonal", "lead": "tonal",
           "keys": "tonal", "vocal": "vocal", "fx": "fx", "riser": "fx", "atmos": "fx", "demo": "demo"}
-NAMES12 = N.NAMES
+NAMES12 = NAMES
 MAJOR_SCALE, MINOR_SCALE = [0, 2, 4, 5, 7, 9, 11], [0, 2, 3, 5, 7, 8, 10]
 CHORDS = {"": [0, 4, 7], "m": [0, 3, 7], "5": [0, 7], "sus2": [0, 2, 7], "sus4": [0, 5, 7], "7": [0, 4, 7, 10],
           "maj7": [0, 4, 7, 11], "m7": [0, 3, 7, 10], "m9": [0, 3, 7, 10, 2], "maj9": [0, 4, 7, 11, 2],
           "9": [0, 4, 7, 10, 2], "m11": [0, 3, 7, 10, 2, 5], "dim": [0, 3, 6], "madd9": [0, 3, 7, 2],
           "add9": [0, 4, 7, 2], "m6": [0, 3, 7, 9], "6": [0, 4, 7, 9]}
 # AudioSet voice labels (Speech, Singing, Choir...) at or above this count as a
-# vocal: named vocals that are plainly audible score 0.8-0.9, the rest of the
-# library's 99th percentile is 0.18. CLAP zero-shot prompts don't separate
-# processed vocals here (named vocal textures score lower than kicks), so it
-# serves search only.
+# vocal. CLAP zero-shot prompts don't separate processed vocals from drums, so
+# CLAP serves search only (SAMPLES.md, Weak spots).
 AST_VOCAL = 0.35
 
 
@@ -404,9 +403,9 @@ def drum_tempo(onsets, tempos):
     """A drum loop's tempo from the detector's candidates. The top one
     stands unless a near-tied runner-up (score >= 0.95) lays the hits on a
     clearly tighter 16th grid (as many hits, under 40% of the spread): a
-    live break read at 2/3 speed. Then the octave: under 100 it is doubled (the finer
-    grid always fits, and the named loops here mostly sit at 160-175);
-    otherwise doubled when the faster grid fits as well and uses its
+    live break read at 2/3 speed. Then the octave: under 100 it is doubled
+    (the finer grid always fits, so this reads drum loops in the drum & bass
+    range; SAMPLES.md, Weak spots); otherwise doubled when the faster grid fits as well and uses its
     off-16ths, halved when the slower grid fits clearly better. Groove is
     measured at both the tempo shown and half of it, so this choice doesn't
     hide a swung 16th."""
@@ -690,9 +689,9 @@ def assemble(root, rel, size, mtime, nm, a, ml):
         cr, csym = chord_guess(chroma, bass)
         if chordal or (loop and fam == "tonal"):
             r["chord_audio"] = csym
-        # where the root comes from, measured against the names: a note's own
-        # pitch (80%), a bass line's longest steady note (73%), a single
-        # chord's root (64%); loops of chords keep the profile, nudged
+        # where the root comes from, best first against the names (SAMPLES.md):
+        # a note's own pitch, a bass line's longest steady note, a single
+        # chord's root; loops of chords keep the profile, nudged
         force = True
         if root_hint is None:
             if t == "bass" and p.get("plateau") and p.get("voiced", 0) >= 0.3:
@@ -766,7 +765,7 @@ def assemble(root, rel, size, mtime, nm, a, ml):
     vocal_audio = bool(vocal_ast and vocal_ast[0] >= AST_VOCAL)
     r["vocal"] = vocal_name or vocal_audio
     r["vocal_source"] = "name+audio" if vocal_name and vocal_audio else ("name" if vocal_name else ("audio" if vocal_audio else None))
-    r["kick"] = bool(loop and (a.get("kick_rate") or 0) >= 0.3) if loop else None
+    r["kick"] = (a.get("kick_rate") or 0) >= 0.3 if loop else None
     r["tags"] = [[k, v] for k, v in tags.items() if v >= 0.1 and k not in ("Music", "Musical instrument")][:10]
     # drums under a melodic part: AudioSet hears a kit, or a drum genre with
     # kicks and percussive energy, or a whole track keeps a steady kick. Low
@@ -939,7 +938,7 @@ def build(root, idx, quiet=False):
 
 
 # ── queries ───────────────────────────────────────────────────────────────
-TYPE_ALIASES = {"drum-loop": None, "drumloop": "break", "drums": "break", "breaks": "break", "beat": "break",
+TYPE_ALIASES = {"drumloop": "break", "drums": "break", "breaks": "break", "beat": "break",
                 "hat-loop": "top", "top-loop": "top", "tops": "top", "hats": "top", "perc-loop": "perc-loop",
                 "percussion": "perc", "impact": "riser", "texture": "atmos", "ambient": "atmos", "sfx": "fx",
                 "synth": "lead", "riff": "lead", "piano": "keys", "rhodes": "keys", "voice": "vocal", "vox": "vocal"}
@@ -956,26 +955,16 @@ def _parse_key(s):
     return root, mode
 
 
-def _key_tuple(text):
-    if not text:
-        return None
-    m = re.fullmatch(r"([A-G]#?)(m|\?)?", text)
-    if not m:
-        return None
-    return N.pitch_class(m.group(1)), {"m": "minor", None: "major", "?": None}[m.group(2)] if m.group(2) != "?" else None
-
-
 def _rec_key(r, field):
-    """(root, mode) of a record's key field; bare roots carry no mode."""
+    """(root, mode) of a record's key field; a bare root from the name
+    ("_E") carries no mode, also once resolved into `key`."""
     v = r.get(field)
     if not v:
         return None
     root = N.pitch_class(re.match(r"[A-G]#?", v).group(0))
     if v.endswith("m"):
         return root, "minor"
-    if field == "name_key" and r.get("name_key_kind") == "root":
-        return root, None
-    if v.endswith("?"):
+    if r.get("name_key_kind") == "root" and (field == "name_key" or (field == "key" and r.get("key_source") == "name")):
         return root, None
     return root, "major"
 
@@ -1066,6 +1055,11 @@ class Library:
             tests.append(lambda r: r.get("type") in types or r.get("family") in fams)
         if loop is not None:
             tests.append(lambda r: bool(r.get("loop")) == bool(loop))
+        def bpm_cands(r):
+            # a detected tempo's octave is a guess (87 or 174?); a named one isn't
+            b = r.get("bpm") or 0
+            return [b, b * 2, b / 2] if fold or r.get("bpm_source") != "name" else [b]
+
         if bpm:
             tol = bpm_tol if bpm_tol is not None else max(1.0, bpm * 0.012)
 
@@ -1073,9 +1067,7 @@ class Library:
                 b = r.get("bpm")
                 if not b:
                     return False
-                # a detected tempo's octave is a guess (87 or 174?); a named one isn't
-                cands = [b, b * 2, b / 2] if fold or r.get("bpm_source") != "name" else [b]
-                return any(abs(c - bpm) <= tol for c in cands)
+                return any(abs(c - bpm) <= tol for c in bpm_cands(r))
             tests.append(bpm_ok)
         if key:
             want = _parse_key(key)
@@ -1160,15 +1152,14 @@ class Library:
                 tests.append(word_ok)
         hits = [r for r in (pool if pool is not None else self.records) if all(t(r) for t in tests)]
         if sort:
-            desc = sort.startswith("-")
             f = sort.lstrip("-")
-            hits.sort(key=lambda r: (r.get(f) is None, -(r.get(f) or 0) if desc and isinstance(r.get(f), (int, float))
-                                     else (r.get(f) if r.get(f) is not None else 0)))
+            have = sorted((r for r in hits if r.get(f) is not None), key=lambda r: r[f], reverse=sort.startswith("-"))
+            hits = have + [r for r in hits if r.get(f) is None]
         else:
             def rank(r):
                 k = []
                 if bpm:
-                    k.append(min(abs((r.get("bpm") or 0) * f - bpm) for f in ((1, 2, 0.5) if fold else (1,))))
+                    k.append(min(abs(c - bpm) for c in bpm_cands(r)))
                 if top == "dark":
                     k.append((r.get("band_air") or 0) / max((r.get("band_high") or 0) + (r.get("band_air") or 0), 1e-6))
                 elif top == "bright":
@@ -1218,12 +1209,14 @@ class Library:
     def text(self, query, limit=25, **filters):
         """Records whose sound best matches a description (CLAP)."""
         q = text_embeddings(self.idx, [query])[0]
-        return self._ranked(q, limit + 0, filters)
+        return self._ranked(q, limit, filters)
 
     def like(self, ref, limit=25, **filters):
         """Records that sound most like a given one (CLAP)."""
         ids, mat = self._clap_matrix()
         r = self.get(ref)
+        if r["id"] not in ids:
+            raise SystemExit(f"{r['title']}: no CLAP embedding (samples.py models --setup, then samples.py index)")
         i = ids.index(r["id"])
         out = self._ranked(mat[i], limit + 1, filters)
         return [x for x in out if x["id"] != r["id"]][:limit]
@@ -1410,7 +1403,7 @@ def _filter_args(p):
     g.add_argument("--min-dur", type=float)
     g.add_argument("--max-dur", type=float)
     g.add_argument("--where", action="append", metavar="EXPR", help="any numeric field: lufs>-10, band_air<0.05")
-    g.add_argument("--sort", help="a field; -field for descending")
+    g.add_argument("--sort", metavar="FIELD", help="a field; --sort=-FIELD for descending")
     g.add_argument("--limit", type=int, default=25)
     o = p.add_argument_group("output")
     o.add_argument("--paths", action="store_true", help="absolute paths only")
@@ -1480,10 +1473,11 @@ def main(argv=None):
         if a.setup:
             setup_models(idx)
         cfg = _read_json(os.path.join(idx, "config.json")) or {}
-        if cfg.get("root"):
-            files = scan(cfg["root"])
-            run_models(cfg["root"], idx, files)
-            build(cfg["root"], idx)
+        if not cfg.get("root"):
+            ap.error("models: no index yet; run samples.py index --root <samples folder> first")
+        files = scan(cfg["root"])
+        run_models(cfg["root"], idx, files)
+        build(cfg["root"], idx)
     elif a.cmd in ("find", "text", "like"):
         lib = load(idx)
         f = _filters(a)

@@ -19,7 +19,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from slabkit.theory import NAMES, QUALITIES, pitch_class  # noqa: E402
+from slabkit.theory import QUALITIES, pitch_class  # noqa: E402
 
 TYPES = ["break", "top", "perc-loop", "kick", "snare", "clap", "hat", "cymbal", "perc",
          "bass", "pad", "chord", "stab", "lead", "keys", "vocal", "fx", "riser", "atmos", "demo"]
@@ -325,12 +325,6 @@ def parse(stem, pack):
     kw, words = keywords(title)
     return {"number": num, "title": title, "type": t, "type_conf": conf, "loop": loop,
             "bpm": bpm, "bpm_how": how, "key": key, "keywords": kw, "words": words}
-
-
-def key_text(root, mode):
-    if root is None:
-        return None
-    return NAMES[root % 12] + ("" if not mode else " " + mode)
 
 
 if __name__ == "__main__":

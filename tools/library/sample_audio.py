@@ -39,7 +39,6 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from slabkit.analyze import BANDS, _blocks, _k_weight, integrated  # noqa: E402
 
-NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 MAJOR = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
 MINOR = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
 
@@ -349,12 +348,8 @@ def yin(m, sr, fmin=27.0, fmax=1600.0, thresh=0.15):
 
 
 def _midi(f):
-    return 69 + 12 * np.log2(f / 440.0)
-
-
-def note_name(p):
-    q = int(round(p))
-    return f"{NAMES[q % 12]}{q // 12 - 1}"
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return 69 + 12 * np.log2(f / 440.0)
 
 
 def refine_f0(m, sr, f0, a, b):

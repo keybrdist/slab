@@ -8,6 +8,8 @@ __pycache__/
 *.pyc
 .fy-port
 scratch/
+# local working files; tools/library/samples.py keeps its index and model venv in .scratch/sample-index
+.scratch/
 recordings/
 songs/*.wav
 # a save in progress (src/package.zig)
