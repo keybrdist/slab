@@ -8,7 +8,7 @@ tone, groove, vocals), with a confidence for each, and a flag wherever the
 two disagree. Queries read the cached index and answer in well under a
 second.
 
-  tools/library/samples.py index --root ~/Music/packs   analyze what's new
+  tools/library/samples.py index                         analyze what's new
   tools/library/samples.py find --type break --bpm 160 --swing 6 --top dark
   tools/library/samples.py find --type pad --key Fm --lacks Eb
   tools/library/samples.py find sub --type bass --oneshot --steady --clean
@@ -26,10 +26,11 @@ From Python (the lab's scripts):
   for r in lib.find(type="break", bpm=160, swing=6, tone="dark"):
       track.audio(samples.playable(r), ...)     # MP3s decode once to WAV
 
-The index lives in $SLAB_SAMPLE_INDEX, default .scratch/sample-index/ in
-this checkout: index.json, the per-file caches (cache/, keyed by path,
-size and mtime, so a rerun analyzes only new or changed files), the CLAP
-embeddings, and the model venv. `index` remembers its root. The audio
+The packs default to $SLAB_LIBRARY/packs (~/Music/Slab/Library/packs) and
+the index to $SLAB_SAMPLE_INDEX, default $SLAB_LIBRARY/.sample-index:
+index.json, the per-file caches (cache/, keyed by path, size and mtime, so
+a rerun analyzes only new or changed files), the CLAP embeddings, and the
+model venv. `index --root` points it at another folder, and is remembered. The audio
 measures need numpy and ffmpeg; the AudioSet tags (vocals, instruments)
 and free-text search need the venv, made once with `samples.py models
 --setup` (torch, transformers and two pretrained models, ~2.5 GB, all
@@ -65,9 +66,16 @@ MODELS_VERSION = 1     # bump when sample_models' output changes
 INDEX_VERSION = 1
 
 
+def slab_library():
+    """$SLAB_LIBRARY, default ~/Music/Slab/Library (as tools/library's other scripts)."""
+    return os.path.expanduser(os.environ.get("SLAB_LIBRARY") or "~/Music/Slab/Library")
+
+
 def index_dir(given=None):
+    """$SLAB_SAMPLE_INDEX, default .sample-index in the Slab library: beside
+    the packs, outside any checkout, and hidden from slab's browser."""
     return os.path.abspath(os.path.expanduser(given or os.environ.get("SLAB_SAMPLE_INDEX")
-                                              or os.path.join(SLAB, ".scratch", "sample-index")))
+                                              or os.path.join(slab_library(), ".sample-index")))
 
 
 def _key(rel):
@@ -1408,7 +1416,7 @@ def _filter_args(p):
     o = p.add_argument_group("output")
     o.add_argument("--paths", action="store_true", help="absolute paths only")
     o.add_argument("--json", action="store_true")
-    o.add_argument("--index", help="index folder (default $SLAB_SAMPLE_INDEX or .scratch/sample-index)")
+    o.add_argument("--index", help="index folder (default $SLAB_SAMPLE_INDEX or $SLAB_LIBRARY/.sample-index)")
 
 
 def _print(hits, a):
@@ -1429,7 +1437,7 @@ def main(argv=None):
                                  epilog=__doc__.split("\n\n", 1)[1])
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("index", help="analyze new or changed files and rebuild index.json")
-    p.add_argument("--root", help="the samples folder (remembered)")
+    p.add_argument("--root", help="the samples folder (remembered; default $SLAB_LIBRARY/packs)")
     p.add_argument("--index")
     p.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 4) - 2))
     p.add_argument("--no-models", action="store_true", help="skip AudioSet tags and CLAP")
@@ -1456,9 +1464,11 @@ def main(argv=None):
 
     if a.cmd == "index":
         cfg = _read_json(os.path.join(idx, "config.json")) or {}
-        root = os.path.abspath(os.path.expanduser(a.root or os.environ.get("SLAB_SAMPLES") or cfg.get("root") or ""))
-        if not a.root and not cfg.get("root") and not os.environ.get("SLAB_SAMPLES"):
-            ap.error("index: --root <samples folder> the first time")
+        packs = os.path.join(slab_library(), "packs")
+        root = a.root or os.environ.get("SLAB_SAMPLES") or cfg.get("root") or (packs if os.path.isdir(packs) else "")
+        if not root:
+            ap.error(f"index: --root <samples folder> (or put the packs in {packs})")
+        root = os.path.abspath(os.path.expanduser(root))
         if not os.path.isdir(root):
             ap.error(f"index: {root} is not a folder")
         t0 = time.time()

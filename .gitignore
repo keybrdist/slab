@@ -8,7 +8,7 @@ __pycache__/
 *.pyc
 .fy-port
 scratch/
-# local working files; tools/library/samples.py keeps its index and model venv in .scratch/sample-index
+# local working files (lab scripts, renders, handoffs)
 .scratch/
 recordings/
 songs/*.wav

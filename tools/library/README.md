@@ -18,7 +18,7 @@ claims, and flags where they disagree. Queries answer in about a tenth of
 a second, from the command line or from Python:
 
 ```sh
-tools/library/samples.py index --root ~/path/to/samples
+tools/library/samples.py index        # packs in ~/Music/Slab/Library/packs
 tools/library/samples.py find --type break --bpm 160 --swing 6 --top dark
 tools/library/samples.py text "dusty rhodes chords"
 ```

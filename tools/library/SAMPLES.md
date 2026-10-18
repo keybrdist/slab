@@ -10,13 +10,16 @@ movement, loudness, tone, groove, vocals, drums), with a confidence for
 each. Where name and audio disagree, the record carries a flag; the
 disagreement is not resolved silently.
 
-The packs are yours, so the index never goes into Git: it lives in
-`$SLAB_SAMPLE_INDEX`, by default `.scratch/sample-index/` in this checkout.
+The packs are yours, so neither they nor the index go into Git. The packs
+default to `$SLAB_LIBRARY/packs/` (`~/Music/Slab/Library/packs/`), one folder
+per pack, and the index to `$SLAB_SAMPLE_INDEX`, by default
+`$SLAB_LIBRARY/.sample-index/`: beside the packs, outside every checkout, and
+hidden from slab's browser.
 
 ## Setup
 
 ```sh
-tools/library/samples.py index --root ~/path/to/samples   # first time; the root is remembered
+tools/library/samples.py index                            # packs in ~/Music/Slab/Library/packs, or --root DIR (remembered)
 tools/library/samples.py models --setup                   # optional, once: ~2.5 GB, see below
 ```
 
@@ -106,9 +109,8 @@ t.audio(samples.playable(r), dur_sec=r["loop_secs"])   # a padded loop's real le
 
 ## Adding packs
 
-Import a pack into the samples folder (the lab's
-`.scratch/samples/import_packs.py` unpacks pack zips there),
-then run `samples.py index`. It analyzes only the new files. A pack whose
+Import a pack into the packs folder (the lab's `import_packs.py` there
+unpacks pack zips beside the others), then run `samples.py index`. It analyzes only the new files. A pack whose
 names follow a new convention may need a rule in `sample_names.py`:
 `samples.py check` shows how far its names and audio agree.
 
