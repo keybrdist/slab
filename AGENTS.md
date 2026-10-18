@@ -21,6 +21,15 @@ audio recording and processing, and headless export. Read [CHANGELOG.md](CHANGEL
 for released changes and [docs/README.md](docs/README.md) for the map of
 implemented features and historical design plans.
 
+## The lab (this fork)
+
+This fork is also a music lab: agents write jungle, drumfunk and DnB
+tracks with slabkit from a library of sample packs. Before choosing
+samples, adding packs or using the production tutorials, read
+[lab/AGENTS.md](lab/AGENTS.md). Find samples by sound, not file name:
+`tools/library/samples.py find --type break --bpm 160 --swing 6`. The packs
+and their index live in `~/Music/Slab/Library/` and never go into Git.
+
 ## Where to start
 
 For music production, start with [docs/33-composing.md](docs/33-composing.md),
