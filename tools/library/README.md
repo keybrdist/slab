@@ -9,6 +9,22 @@ and slab lists them as banks of that machine's presets.
 The app's PACKS tab (docs/25 §Installing) runs these tools for you: its
 DOWNLOAD and IMPORT buttons start them and show their output.
 
+## Sample index
+
+`tools/library/samples.py` indexes a folder of sample packs by what each
+file is and how it sounds (type, loop or one-shot, tempo and bars, key or
+root, pitch movement, loudness, tone, swing, vocals), beside what its name
+claims, and flags where they disagree. Queries answer in about a tenth of
+a second, from the command line or from Python:
+
+```sh
+tools/library/samples.py index --root ~/path/to/samples
+tools/library/samples.py find --type break --bpm 160 --swing 6 --top dark
+tools/library/samples.py text "dusty rhodes chords"
+```
+
+Schema, method, measured accuracy and weak spots: [SAMPLES.md](SAMPLES.md).
+
 ## VCSL
 
 The [Versilian Community Sample Library](https://github.com/sgossner/VCSL)

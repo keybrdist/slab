@@ -9,6 +9,11 @@ GitHub are its section here (`tools/release.sh` copies them), so add to
 - A composing walkthrough (docs/33) takes you from a musical brief to an
   editable sketch with GEQ, a shared delay and a mix and stem export; the
   production guide is updated for sends, clip automation and GEQ.
+- `tools/library/samples.py` indexes your sample packs and finds a sample
+  by sound: type, tempo and bars, key or root, whether a one-shot holds
+  its pitch, loudness, tone, swing, vocals, plus free-text search. Names
+  and audio are checked against each other and disagreements flagged
+  (tools/library/SAMPLES.md).
 - slabkit's `track.audio()` places FLAC files without `dur_sec=`.
 
 ## 0.0.10 — 2026-10-06
