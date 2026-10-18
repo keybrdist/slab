@@ -30,6 +30,13 @@ samples, adding packs or using the production tutorials, read
 `tools/library/samples.py find --type break --bpm 160 --swing 6`. The packs
 and their index live in `~/Music/Slab/Library/` and never go into Git.
 
+Production tutorials (Paradox, flobama, STRANJAH, LMajor) are in
+`~/Music/Slab/Knowledge/`. Search them with
+`python3 ~/Music/Slab/Knowledge/library.py search '<term>'`, then read one
+tutorial's `notes.md`, not whole transcripts. Before generating, read
+`~/Music/Slab/Knowledge/context/drum-funk-thread.md`: the listener's verdicts
+on earlier rounds.
+
 ## Where to start
 
 For music production, start with [docs/33-composing.md](docs/33-composing.md),
