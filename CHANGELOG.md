@@ -19,7 +19,8 @@ GitHub are its section here (`tools/release.sh` copies them), so add to
   does. It used to put the difference of its lowest and highest bins
   between them.
 - Clips, notes, bends and lanes past a track's caps no longer vanish
-  silently: Slab logs which track and how many, and `slab --render`
+  silently: Slab says which track and how many on the status line and
+  in the log, and `slab --render`
   stops with `TrackPastCaps`. A track past its note-clip cap also
   keeps playing its audio clips, which it used to drop with them.
 
