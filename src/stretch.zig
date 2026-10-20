@@ -245,6 +245,11 @@ pub const Stretcher = struct {
                 self.psi[k] = princarg(self.peak_psi[pi] + self.ph[k] - self.ph[p]);
             }
         }
+        // DC and Nyquist stay real, as in SMEAR. Turned, they'd be complex,
+        // and the packed inverse below would leak each channel's imaginary
+        // part into the other: identical sides came out different.
+        self.psi[0] = self.ph[0];
+        self.psi[N / 2] = self.ph[N / 2];
 
         // ── Synthesis: each channel turned by the mid's correction ──
         // Bin k overwrites bl[k] and br[N−k] only after reading them; no
@@ -684,6 +689,32 @@ test "stretch: a stereo image keeps its channels apart" {
     st.render(.{ .l = xl.ptr, .r = xr.ptr, .len = xl.len, .reversed = false }, Lin{ .rate = 0.7, .p0 = 20_000 }, 0, &l, &r, &g);
     try std.testing.expectApproxEqAbs(@as(f64, 300), hz(l[4096..20_000]), 1.5);
     try std.testing.expectApproxEqAbs(@as(f64, 1200), hz(r[4096..20_000]), 3);
+}
+
+test "stretch: a stereo file with identical sides keeps them identical" {
+    const alloc = std.testing.allocator;
+    const x = try alloc.alloc(f64, 96_000);
+    defer alloc.free(x);
+    var rng = std.Random.DefaultPrng.init(3);
+    // Broadband, with energy at DC and Nyquist: those bins must stay real.
+    for (x, 0..) |*v, i| v.* = 0.05 + 0.3 * @sin(@as(f64, @floatFromInt(i)) * 0.02) + 0.2 * (rng.random().float(f64) - 0.5);
+    const st = try alloc.create(Stretcher);
+    defer alloc.destroy(st);
+    var l = [_]f32{0} ** 24_000;
+    var r = [_]f32{0} ** 24_000;
+    const g = [_]f32{1} ** 24_000;
+    for ([_]f64{ 0.7, 1.0, 1.6 }) |rate| {
+        st.* = .{};
+        st.claim(1, 0, .mix, 0);
+        st.render(.{ .l = x.ptr, .r = x.ptr, .len = x.len, .reversed = false }, Lin{ .rate = rate, .p0 = 20_000 }, 0, &l, &r, &g);
+        var side: f64 = 0;
+        var mid: f64 = 0;
+        for (l[4096..], r[4096..]) |a, b| {
+            side += (@as(f64, a) - b) * (@as(f64, a) - b);
+            mid += @as(f64, a) * a;
+        }
+        try std.testing.expect(side <= mid * 1e-12); // L-R at least 120 dB down
+    }
 }
 
 test "voice: grains keep the pitch and the level, stretched and squeezed" {
