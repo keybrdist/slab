@@ -5993,6 +5993,9 @@ fn renderHeadless(alloc: std.mem.Allocator, project: []const u8, cli: Cli) !void
     pool.waitAnalyses();
     for (tracks) |*t| t.publishSnapshot(&pool);
     master.publishSnapshot(&pool);
+    // What a track holds past its caps doesn't play: refuse rather than
+    // write a bounce that is silently missing it (publishSnapshot said what).
+    for (tracks) |*t| if (t.capped.any()) return error.TrackPastCaps;
 
     var engine = engine_mod.Engine{
         .transport = &transport,

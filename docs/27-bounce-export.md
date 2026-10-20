@@ -404,7 +404,9 @@ slab song.slab --render demo.m4a --mono           # the mix summed to mono
 ```
 
 The format comes from the extension. slabkit's `render(stems=True)`
-calls `--stems` once instead of writing a project per track.
+calls `--stems` once instead of writing a project per track. A track
+past its caps (docs/19) stops the render with `TrackPastCaps` and a
+warning saying what wouldn't play, rather than a bounce without it.
 
 ## FLAC encoder
 

@@ -245,7 +245,10 @@ A **note clip**:
 - `"muted": true` (either kind of clip): the clip stays on the
   timeline but doesn't play: no notes, no audio, no clip lanes. A
   render's range ignores muted clips. `0` toggles it on the selection.
-- At most 64 clips and 2048 notes per track.
+- At most 64 note clips, 64 audio clips, 2048 notes, 4096 expression
+  points and 128 lanes per track (`snapshot.zig`). What is past them
+  doesn't play: the app logs a warning naming the track, and a
+  headless render stops with `TrackPastCaps` instead of writing it.
 - Clips on one track may overlap, and both play.
 
 An **audio clip**:

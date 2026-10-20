@@ -99,6 +99,20 @@ pub const Send = struct {
     }
 };
 
+/// What a track holds past its snapshot's caps: it doesn't play.
+pub const Capped = struct {
+    clips: u32 = 0,
+    notes: u32 = 0,
+    expr_points: u32 = 0,
+    /// Warped clips whose markers don't fit: they play unwarped.
+    warp_maps: u32 = 0,
+    lanes: u32 = 0,
+
+    pub fn any(self: Capped) bool {
+        return self.clips + self.notes + self.expr_points + self.warp_maps + self.lanes > 0;
+    }
+};
+
 pub const Track = struct {
     name_buf: [MAX_NAME]u8 = [_]u8{0} ** MAX_NAME,
     name_len: u8 = 0,
@@ -174,6 +188,10 @@ pub const Track = struct {
     /// UI writes to the non-published slot then flips snap_published.
     snap: [2]*snap_mod.TrackSnapshot,
     snap_published: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
+    /// UI thread: what the last publish left out to fit the snapshot's caps
+    /// (snapshot.zig), and what was last logged.
+    capped: Capped = .{},
+    capped_said: Capped = .{},
 
     /// 0..1 linear gain, bit-cast for atomic.
     volume_bits: std.atomic.Value(u32) = std.atomic.Value(u32).init(@bitCast(@as(f32, 0.8))),
@@ -638,6 +656,7 @@ pub const Track = struct {
         dst.clip_count = 0;
         dst.note_count = 0;
         dst.audio_clip_count = 0;
+        self.capped = .{};
         dst.expr_point_count = 0;
         dst.warp_point_count = 0;
         dst.stretch = self.stretch;
@@ -647,7 +666,7 @@ pub const Track = struct {
             if (!self.plays(clip)) continue;
             if (clip.isAudio()) {
                 if (dst.audio_clip_count >= snap_mod.MAX_AUDIO_CLIPS_PER_TRACK) {
-                    std.debug.assert(false); // bump MAX_AUDIO_CLIPS_PER_TRACK
+                    self.capped.clips += 1;
                     continue;
                 }
                 var snap = snap_mod.AudioClipSnap{
@@ -703,20 +722,20 @@ pub const Track = struct {
                     };
                     @memcpy(dst.warp_points[dst.warp_point_count..][0..wm.len], wm);
                     dst.warp_point_count += @intCast(wm.len);
-                }
+                } else if (clip.audio.warp and warp_mod.valid(wm)) self.capped.warp_maps += 1;
                 dst.audio_clips[dst.audio_clip_count] = snap;
                 dst.audio_clip_count += 1;
                 continue;
             }
             if (dst.clip_count >= snap_mod.MAX_CLIPS_PER_TRACK) {
-                std.debug.assert(false); // bump MAX_CLIPS_PER_TRACK
-                break;
+                self.capped.clips += 1;
+                continue; // the audio clips after it still fit their own cap
             }
             const notes_start = dst.note_count;
             var notes_added: u32 = 0;
-            for (clip.notes.items) |note| {
+            for (clip.notes.items, 0..) |note, ni| {
                 if (dst.note_count >= snap_mod.MAX_NOTES_PER_TRACK) {
-                    std.debug.assert(false); // bump MAX_NOTES_PER_TRACK
+                    self.capped.notes += @intCast(clip.notes.items.len - ni);
                     break;
                 }
                 dst.notes[dst.note_count] = .{
@@ -748,7 +767,7 @@ pub const Track = struct {
                     dst.notes[dst.note_count].expr_count = note.bend_n;
                     @memcpy(dst.expr_points[dst.expr_point_count..][0..note.bend_n], note.bendPoints());
                     dst.expr_point_count += note.bend_n;
-                }
+                } else self.capped.expr_points += note.bend_n;
                 var dim_total: u32 = 0;
                 for (note.dims) |cv| dim_total += cv.n;
                 if (dim_total > 0 and dst.expr_point_count + dim_total <= snap_mod.MAX_EXPR_POINTS_PER_TRACK) {
@@ -759,7 +778,7 @@ pub const Track = struct {
                         @memcpy(dst.expr_points[dst.expr_point_count..][0..cv.n], cv.points());
                         dst.expr_point_count += cv.n;
                     }
-                }
+                } else self.capped.expr_points += dim_total;
                 if (time_rate != 1) for (dst.expr_points[expr_from..dst.expr_point_count]) |*pt| {
                     pt.beat /= time_rate;
                 };
@@ -776,6 +795,12 @@ pub const Track = struct {
         }
 
         self.snap_published.store(write_idx, .release);
+        if (!std.meta.eql(self.capped, self.capped_said)) {
+            if (self.capped.any()) std.log.warn("track {s}: past its caps, {d} clips, {d} notes, {d} expression points, {d} warp maps and {d} lanes don't play", .{
+                self.name(), self.capped.clips, self.capped.notes, self.capped.expr_points, self.capped.warp_maps, self.capped.lanes,
+            });
+            self.capped_said = self.capped;
+        }
     }
 
     /// Whether `clip` reaches the audio thread: not muted, and selected
@@ -789,7 +814,7 @@ pub const Track = struct {
     /// lanes, then clip lanes ordered by clip start, so the audio thread's
     /// "last lane that applies wins" is the precedence of docs/22. Lanes
     /// that are empty or whose control no longer exists are left out.
-    fn publishLanes(self: *const Track, dst: *snap_mod.TrackSnapshot) void {
+    fn publishLanes(self: *Track, dst: *snap_mod.TrackSnapshot) void {
         dst.lane_count = 0;
         dst.auto_point_count = 0;
         for (self.lanes.items) |*lane| self.publishLane(dst, lane, null);
@@ -813,11 +838,13 @@ pub const Track = struct {
         }
     }
 
-    fn publishLane(self: *const Track, dst: *snap_mod.TrackSnapshot, lane: *const automation.Lane, clip: ?*const clip_mod.Clip) void {
+    fn publishLane(self: *Track, dst: *snap_mod.TrackSnapshot, lane: *const automation.Lane, clip: ?*const clip_mod.Clip) void {
         const pts = lane.points.items;
         if (pts.len == 0) return;
-        if (dst.lane_count >= snap_mod.MAX_LANES_PER_TRACK) return;
-        if (dst.auto_point_count + pts.len > snap_mod.MAX_AUTO_POINTS_PER_TRACK) return;
+        if (dst.lane_count >= snap_mod.MAX_LANES_PER_TRACK or dst.auto_point_count + pts.len > snap_mod.MAX_AUTO_POINTS_PER_TRACK) {
+            self.capped.lanes += 1;
+            return;
+        }
         var ls = snap_mod.LaneSnap{
             .kind = lane.target.kind,
             .fx_uid = lane.target.fx_uid,
@@ -949,6 +976,27 @@ pub fn testMachine() machine.Machine {
             fn f(_: *anyopaque) void {}
         }.f,
     };
+}
+
+test "past the clip cap: the extra clip is counted, and audio clips after it still play" {
+    const alloc = testing.allocator;
+    var t = try Track.init(alloc, "test", .{ .r = 0, .g = 0, .b = 0, .a = 255 }, testMachine());
+    defer t.deinit(alloc);
+    for (0..snap_mod.MAX_CLIPS_PER_TRACK + 1) |i| {
+        var clip = clip_mod.Clip.init("N", @floatFromInt(i), 1.0);
+        try clip.addNote(alloc, .{ .pitch = 60, .start_beat = 0, .length_beats = 0.5, .velocity = 80 });
+        try t.addClip(alloc, clip);
+    }
+    try t.addClip(alloc, clip_mod.Clip.initAudio("A", 100, 4.0, 0));
+    var pool = audio_pool_mod.AudioPool.init(alloc);
+    defer pool.deinit();
+    t.publishSnapshot(&pool);
+
+    const s = t.currentSnapshot();
+    try testing.expectEqual(@as(u32, snap_mod.MAX_CLIPS_PER_TRACK), s.clip_count);
+    try testing.expectEqual(@as(u32, 1), s.audio_clip_count);
+    try testing.expectEqual(@as(u32, 1), t.capped.clips);
+    try testing.expect(t.capped.any());
 }
 
 test "a muted clip publishes nothing: no notes, no audio, no lanes" {
