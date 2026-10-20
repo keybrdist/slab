@@ -2951,6 +2951,13 @@ fn resetImpl(state: *anyopaque) void {
     self.injectBuffers();
     self.injectAssets(); // params were memset; restore the asset pointers
     self.failed = false;
+    // A knob set to jump (project load, a preset) lands on the next block.
+    // Derive the params from it now too, so what the host reads before that
+    // block, the latency a bounce trims and the first block compensates, is
+    // the knob's and not its default's. The request stays for the block.
+    for (self.desc.controls[0..self.desc.control_count], 0..) |ctl, i| {
+        if (ctl.kind == .direct_f64 and self.snap_req[i].load(.acquire)) self.smooth_norm[i] = self.controlNorm(i);
+    }
     self.syncRawParams(self.synced_sr, self.synced_tempo);
 }
 
@@ -8508,6 +8515,29 @@ test "idle hold: a delay holds on for its ring, a limiter for its lookahead, an 
         defer mach.deinit.?(mach.state, testing.allocator);
         try testing.expectEqual(@as(u32, cs[1]), mach.idleHold(48_000, 100));
     }
+}
+
+test "a reset reports the latency of knobs set to jump, as the next block does" {
+    const inst = try FyRawMachine.create(testing.allocator, "machines/limiter2/limiter2.fy");
+    const mach = inst.machineInterface();
+    defer mach.deinit.?(mach.state, testing.allocator);
+    for (inst.desc.controls[0..inst.desc.control_count], 0..) |*ctl, i| {
+        if (std.mem.eql(u8, ctl.idSlice(), "lim-look")) inst.setControlNormSnap(i, valueToNorm(ctl.*, 5.0)); // as a project sets it
+    }
+    mach.reset(mach.state); // a bounce resets every machine, then reads their latency
+    const at_reset = mach.latencySamples();
+    try testing.expect(at_reset > 200); // LOOK 5 ms, not the default 2 ms (97)
+    var in_l: [256]f32 = @splat(0);
+    var ports = [_][*]const f32{ &in_l, &in_l };
+    var ctx = std.mem.zeroes(machine.MachineCtx);
+    ctx.sample_rate = 48_000;
+    ctx.block_size = 256;
+    ctx.audio_in = @ptrCast(&ports[0]);
+    ctx.audio_in_count = 2;
+    var l: [256]f32 = undefined;
+    var r: [256]f32 = undefined;
+    testRender(mach, &ctx, &l, &r);
+    try testing.expectEqual(mach.latencySamples(), at_reset);
 }
 
 test "a reset keeps the latency a machine reports" {
