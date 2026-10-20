@@ -272,7 +272,9 @@ with compile-time twiddles: no allocation, no trig per transform).
 - **Stereo**: the phases are worked out on the mid, and both channels
   are turned by the same correction (output phase − mid's analysis
   phase), so the image doesn't wander; their two inverse transforms
-  share one.
+  share one. DC and Nyquist keep their analysis phase, so they stay real
+  and neither channel leaks into the other: a file whose two sides are
+  the same comes out the same.
 - **Pitch**: each frame reads the source at `step = source rate /
   engine rate × pitch` per frame sample (through the band-limited
   reader, or straight when the step is 1), so TRANSPOSE, FINE and the

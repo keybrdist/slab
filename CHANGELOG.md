@@ -14,6 +14,10 @@ GitHub are its section here (`tools/release.sh` copies them), so add to
   latency away from its default (a limiter's LOOK, say). It used to start
   late and end early by the difference (143 samples with LOOK at 5 ms), so
   the mix sat behind its own stems.
+- MIX time-stretch keeps a stereo file's sides as they are: a file whose
+  two channels are the same stays mono, as the same audio in a mono file
+  does. It used to put the difference of its lowest and highest bins
+  between them.
 
 ## 0.0.10 — 2026-10-06
 
