@@ -10,6 +10,10 @@ GitHub are its section here (`tools/release.sh` copies them), so add to
   editable sketch with GEQ, a shared delay and a mix and stem export; the
   production guide is updated for sends, clip automation and GEQ.
 - slabkit's `track.audio()` places FLAC files without `dur_sec=`.
+- A bounce lines up with the timeline when a project sets a machine's
+  latency away from its default (a limiter's LOOK, say). It used to start
+  late and end early by the difference (143 samples with LOOK at 5 ms), so
+  the mix sat behind its own stems.
 
 ## 0.0.10 — 2026-10-06
 
