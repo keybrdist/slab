@@ -192,6 +192,8 @@ pub const Track = struct {
     /// (snapshot.zig), and what was last logged.
     capped: Capped = .{},
     capped_said: Capped = .{},
+    /// UI thread: what the caps leave out changed; the status line says so.
+    capped_news: bool = false,
 
     /// 0..1 linear gain, bit-cast for atomic.
     volume_bits: std.atomic.Value(u32) = std.atomic.Value(u32).init(@bitCast(@as(f32, 0.8))),
@@ -796,9 +798,12 @@ pub const Track = struct {
 
         self.snap_published.store(write_idx, .release);
         if (!std.meta.eql(self.capped, self.capped_said)) {
-            if (self.capped.any()) std.log.warn("track {s}: past its caps, {d} clips, {d} notes, {d} expression points, {d} warp maps and {d} lanes don't play", .{
-                self.name(), self.capped.clips, self.capped.notes, self.capped.expr_points, self.capped.warp_maps, self.capped.lanes,
-            });
+            if (self.capped.any()) {
+                std.log.warn("track {s}: past its caps, {d} clips, {d} notes, {d} expression points, {d} warp maps and {d} lanes don't play", .{
+                    self.name(), self.capped.clips, self.capped.notes, self.capped.expr_points, self.capped.warp_maps, self.capped.lanes,
+                });
+                self.capped_news = true;
+            }
             self.capped_said = self.capped;
         }
     }
@@ -997,6 +1002,10 @@ test "past the clip cap: the extra clip is counted, and audio clips after it sti
     try testing.expectEqual(@as(u32, 1), s.audio_clip_count);
     try testing.expectEqual(@as(u32, 1), t.capped.clips);
     try testing.expect(t.capped.any());
+    try testing.expect(t.capped_news); // for the status line, once
+    t.capped_news = false;
+    t.publishSnapshot(&pool);
+    try testing.expect(!t.capped_news);
 }
 
 test "a muted clip publishes nothing: no notes, no audio, no lanes" {

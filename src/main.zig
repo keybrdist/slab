@@ -1041,6 +1041,11 @@ pub fn main(init: std.process.Init) !void {
             try openProjectPath(alloc, &history, &tracks_buf, &track_count, &open_tracks, &transport, &engine, &audio, &reg, &selected_track, &selected_clip, &prev_selected_clip, &project_path, &project_path_chosen, &dirty, &status, path);
             splash.finishBoot();
         }
+        for (tracks_buf[0..track_count]) |*t| if (t.capped_news) {
+            t.capped_news = false;
+            const k = t.capped;
+            status.set("{s}: past its caps, {d} clips {d} notes {d} bends {d} warps {d} lanes don't play", .{ t.name(), k.clips, k.notes, k.expr_points, k.warp_maps, k.lanes });
+        };
         const sw: f32 = @floatFromInt(c.rl.GetScreenWidth());
         const sh: f32 = @floatFromInt(c.rl.GetScreenHeight());
         ui.beginFrame();
