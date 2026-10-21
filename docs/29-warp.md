@@ -266,9 +266,12 @@ with compile-time twiddles: no allocation, no trig per transform).
   its frequency times the hop, and every bin keeps its analysis phase
   offset from the peak whose region it's in (regions split halfway
   between peaks).
-- **Transients**: a frame whose position passed one of the source's
-  transients since the last frame takes the analysis phases as they are
-  (a phase reset), so attacks start clean.
+- **Transients**: in a frame whose position passed one of the source's
+  transients since the last frame, each peak that rose 6 dB or more over
+  the last frame takes its analysis phase (a phase reset), so attacks start
+  clean. Steady peaks keep their phase: resetting them too pinned every held
+  partial to the source's timeline, so a stretched loop with onsets came out
+  at tape pitch (19 cents flat at 174 to 172 bpm) and FINE didn't move it.
 - **Stereo**: the phases are worked out on the mid, and both channels
   are turned by the same correction (output phase − mid's analysis
   phase), so the image doesn't wander; their two inverse transforms

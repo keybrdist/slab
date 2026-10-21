@@ -33,6 +33,9 @@ const WINDOW: [N]f32 = blk: {
 /// A Hann window analyzing and again synthesizing, four frames deep, sums
 /// to 1.5.
 const OLA_GAIN: f32 = 1.0 / 1.5;
+/// How much a peak must rise over the last frame (magnitude, 6 dB) to count
+/// as an attack at a transient.
+const ATTACK_RISE: f32 = 2.0;
 
 /// What a stretcher reads: a source, mono or stereo, read mirrored when
 /// reversed. Positions are in source samples in the clip's direction.
@@ -99,6 +102,9 @@ pub const Stretcher = struct {
     prev_pos: f64 = 0,
     /// Output phases (the mid's), per bin.
     psi: [BINS]f32 = [_]f32{0} ** BINS,
+    /// The last frame's magnitudes (the mid's): at a transient, a peak
+    /// that rose takes its analysis phase and a steady one keeps its own.
+    prev_mag: [BINS]f32 = [_]f32{0} ** BINS,
     ring_l: [N]f32 = [_]f32{0} ** N,
     ring_r: [N]f32 = [_]f32{0} ** N,
     bl: [N]C = undefined,
@@ -174,7 +180,8 @@ pub const Stretcher = struct {
     fn synth(self: *Stretcher, src: Source, ctx: anytype, t: i64, a: i64) void {
         const pos = ctx.pos(@floatFromInt(t));
         const step: f64 = ctx.step;
-        const reset = self.reset_phase or ctx.hit(self.prev_pos, pos);
+        const fresh = self.reset_phase;                                   // a restart: no frame before this one
+        const hit = !fresh and ctx.hit(self.prev_pos, pos);
         self.reset_phase = false;
         self.prev_pos = pos;
         const stereo = src.r != null;
@@ -215,7 +222,7 @@ pub const Stretcher = struct {
 
         // ── Output phases ──
         var np: usize = 0;
-        if (!reset and max > 0) {
+        if (!fresh and max > 0) {
             const floor = max * 1e-4;
             var k: usize = 2;
             while (k + 2 < BINS) : (k += 1) {
@@ -229,8 +236,16 @@ pub const Stretcher = struct {
         if (np == 0) {
             @memcpy(&self.psi, &self.ph);
         } else {
-            // Each peak advances by its own frequency over the hop.
+            // Each peak advances by its own frequency over the hop. Past a
+            // transient, a peak that rose (an attack) takes its analysis
+            // phase, so the hit starts clean; a steady one keeps going.
+            // Resetting them all pinned every held partial to the source's
+            // timeline: a stretched loop with onsets came out at tape pitch.
             for (self.peaks[0..np], 0..) |p, i| {
+                if (hit and self.mag[p] > ATTACK_RISE * self.prev_mag[p]) {
+                    self.peak_psi[i] = self.ph[p];
+                    continue;
+                }
                 const bm = splitB(&self.bl, p).add(if (stereo) splitB(&self.br, p) else C{ .re = 0, .im = 0 });
                 const expect = TAU * @as(f32, @floatFromInt(@as(u32, p) * H)) / N;
                 const dev = princarg(self.ph[p] - bm.arg() - expect);
@@ -250,6 +265,7 @@ pub const Stretcher = struct {
         // part into the other: identical sides came out different.
         self.psi[0] = self.ph[0];
         self.psi[N / 2] = self.ph[N / 2];
+        @memcpy(&self.prev_mag, &self.mag);
 
         // ── Synthesis: each channel turned by the mid's correction ──
         // Bin k overwrites bl[k] and br[N−k] only after reading them; no
@@ -689,6 +705,82 @@ test "stretch: a stereo image keeps its channels apart" {
     st.render(.{ .l = xl.ptr, .r = xr.ptr, .len = xl.len, .reversed = false }, Lin{ .rate = 0.7, .p0 = 20_000 }, 0, &l, &r, &g);
     try std.testing.expectApproxEqAbs(@as(f64, 300), hz(l[4096..20_000]), 1.5);
     try std.testing.expectApproxEqAbs(@as(f64, 1200), hz(r[4096..20_000]), 3);
+}
+
+/// A context with a click every `every` source samples: a transient between
+/// two frames that pass one.
+const Clicks = struct {
+    rate: f64,
+    p0: f64 = 0,
+    step: f64 = 1,
+    every: f64,
+    fn pos(self: Clicks, t: f64) f64 {
+        return t * self.rate + self.p0;
+    }
+    fn hit(self: Clicks, p0: f64, p1: f64) bool {
+        return p1 > p0 and @floor(p1 / self.every) > @floor(p0 / self.every);
+    }
+};
+
+/// A held 196 Hz tone with a click every 0.2 s, stretched to 1/0.8 its length.
+fn clickTone(alloc: std.mem.Allocator, l: []f32) ![]f64 {
+    const x = try alloc.alloc(f64, 96_000);
+    for (x, 0..) |*v, i| {
+        v.* = 0.3 * @sin(2 * std.math.pi * 196.0 * @as(f64, @floatFromInt(i)) / 48_000.0);
+        if (i % 9600 < 48) v.* += 0.6 * (1 - @as(f64, @floatFromInt(i % 9600)) / 48);
+    }
+    const st = try alloc.create(Stretcher);
+    defer alloc.destroy(st);
+    st.* = .{};
+    st.claim(1, 0, .mix, 0);
+    var r: [24_000]f32 = undefined;
+    @memset(l, 0);
+    const g = [_]f32{1} ** 24_000;
+    st.render(.{ .l = x.ptr, .r = null, .len = x.len, .reversed = false }, Clicks{ .rate = 0.8, .p0 = 20_000, .every = 9600 }, 0, l, r[0..l.len], g[0..l.len]);
+    return x;
+}
+
+test "stretch: a held note keeps its pitch through transients" {
+    const alloc = std.testing.allocator;
+    var l: [24_000]f32 = undefined;
+    const x = try clickTone(alloc, &l);
+    defer alloc.free(x);
+    // The tone's frequency from its zero crossings between the clicks: 196 Hz,
+    // not the 157 Hz of a phase pinned to the source (196 × 0.8).
+    var best: f64 = 0;
+    var best_mag: f64 = 0;
+    var f: f64 = 150;
+    while (f < 250) : (f += 0.05) {
+        var re: f64 = 0;
+        var im: f64 = 0;
+        for (l[4096..20_000], 4096..) |v, i| {
+            const ph = 2 * std.math.pi * f * @as(f64, @floatFromInt(i)) / 48_000.0;
+            re += v * @cos(ph);
+            im += v * @sin(ph);
+        }
+        const mg = re * re + im * im;
+        if (mg > best_mag) {
+            best_mag = mg;
+            best = f;
+        }
+    }
+    try std.testing.expectApproxEqAbs(@as(f64, 196), best, 0.5);
+}
+
+test "stretch: attacks still start clean at a transient" {
+    const alloc = std.testing.allocator;
+    var l: [24_000]f32 = undefined;
+    const x = try clickTone(alloc, &l);
+    defer alloc.free(x);
+    // Each click (source 9600·k) lands at output (9600·k − 20 000) / 0.8, as
+    // sharp as when every phase reset at a transient (0.45 and 0.36 then).
+    var k: f64 = 3;
+    while (k <= 4) : (k += 1) {
+        const at: usize = @intFromFloat((9600 * k - 20_000) / 0.8);
+        var peak: f32 = 0;
+        for (l[at - 200 .. at + 400]) |v| peak = @max(peak, @abs(v));
+        try std.testing.expect(peak > 0.38);
+    }
 }
 
 test "stretch: a stereo file with identical sides keeps them identical" {

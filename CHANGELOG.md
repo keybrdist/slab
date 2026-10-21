@@ -10,6 +10,9 @@ GitHub are its section here (`tools/release.sh` copies them), so add to
   editable sketch with GEQ, a shared delay and a mix and stem export; the
   production guide is updated for sends, clip automation and GEQ.
 - slabkit's `track.audio()` places FLAC files without `dur_sec=`.
+- MIX keeps a loop's pitch when it stretches one with hits in it: a keys or
+  pad loop at 174 played at 172 came out about 19 cents flat (the tape
+  ratio), and FINE didn't move it. Attacks still start clean.
 - A bounce lines up with the timeline when a project sets a machine's
   latency away from its default (a limiter's LOOK, say). It used to start
   late and end early by the difference (143 samples with LOOK at 5 ms), so
